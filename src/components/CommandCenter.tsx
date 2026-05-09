@@ -97,20 +97,20 @@ export default function CommandCenter() {
       <main className="flex-1 flex flex-col gap-6">
         
         {/* MATRIX OVERVIEW SECTION (FULL WIDTH) */}
-        <div className="glass-panel rounded-xl overflow-hidden flex flex-col border border-white/5 relative h-[500px]">
+        <div className="glass-panel rounded-xl overflow-hidden flex flex-col border border-white/5 relative h-[400px] sm:h-[500px] lg:h-[550px]">
           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-30" />
-          <div className="p-4 border-b border-white/5 bg-black/40 flex items-center justify-between">
+          <div className="p-4 border-b border-white/5 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <h2 className="text-sm font-mono text-neon-cyan uppercase tracking-widest flex items-center gap-2">
               <LineChart size={16} className="opacity-70" /> Relative Strength Matrix
             </h2>
             {/* Timeframe Tabs */}
-            <div className="flex items-center bg-[#050507] p-1 rounded-lg border border-white/5 shadow-inner">
+            <div className="flex items-center bg-[#050507] p-1 rounded-lg border border-white/5 shadow-inner w-full sm:w-auto justify-between">
               {TIMEFRAMES.map((tf) => (
                 <button
                   key={tf}
                   onClick={() => setTimeframe(tf)}
                   className={cn(
-                    "px-5 py-1 rounded-md text-[11px] font-mono font-medium transition-all duration-300 relative",
+                    "px-4 py-1.5 sm:px-5 sm:py-1 rounded-md text-[11px] font-mono font-medium transition-all duration-300 relative flex-1 sm:flex-none text-center",
                     timeframe === tf 
                       ? "text-white shadow-lg" 
                       : "text-gray-500 hover:text-gray-300 hover:bg-white/5"

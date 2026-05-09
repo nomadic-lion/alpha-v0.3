@@ -29,7 +29,7 @@ export const Sparkline: React.FC<SparklineProps> = ({
     return `${x},${y}`;
   }).join(' ');
 
-  const isPositive = data[data.length - 1] >= data[0];
+  const isPositive = data[data.length - 1] >= 0;
   const finalColor = isPositive ? '#00e676' : '#ff2a2a'; // Green if up, Red if down
   // Override color if passed explicitly or use trend color
   const strokeColor = color !== '#00f3ff' ? color : finalColor;

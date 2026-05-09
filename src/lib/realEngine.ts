@@ -109,10 +109,20 @@ function calculateStrengthsAt(getV: Function, pd: any, index?: number): Currency
     const measureValues: Record<string, number> = {};
 
     CURRENCIES.forEach(c => {
-       // getV with no index but telling it to get 'openPrice' is tricky.
-       // Let's implement a specific getOpenV
-       openValues[c] = getOpenV(c, pd);
-       measureValues[c] = getV(c, pd, index);
+       const measureVal = getV(c, pd, index);
+       let openVal = measureVal; // Default to 0 delta
+
+       if (index !== undefined) {
+           // Base all historical calculations from the first candle (open)
+           // to plot cumulative relative strength over time.
+           openVal = getOpenV(c, pd);
+       } else if (index === undefined) {
+           // For current live strength scalar
+           openVal = getOpenV(c, pd);
+       }
+
+       openValues[c] = openVal;
+       measureValues[c] = measureVal;
     });
 
     CURRENCIES.forEach(base => {

@@ -1,139 +1,50 @@
-# Deployment Guide (Google Cloud VPS)
+# Deployment Guide (Dokploy / VPS)
 
-This guide covers how to deploy the Quant Alpha application to a Google Cloud VPS (Compute Engine) running Linux (Ubuntu/Debian) using Docker.
+This guide covers how to deploy the Quant Alpha application to any VPS (like Google Cloud, AWS, DigitalOcean) using [Dokploy](https://dokploy.com/), a free and open-source self-hostable PaaS that simplifies Docker deployments.
 
-We recommend Docker because it ensures that the app runs in the exact same environment as it does during development, preventing "it works on my machine" issues.
+## Why Dokploy?
+Dokploy acts like a free Heroku/Vercel on your own VPS. It reads the provided `Dockerfile`, builds the application, sets up an isolated container, and configures Nginx and SSL certificates automatically.
 
-## Prerequisites
+## Step 1: Install Dokploy on your VPS
 
-1.  A Google Cloud VPS (Compute Engine instance) accessible via SSH.
-2.  Your instance should have ports `80` (HTTP) and `443` (HTTPS) open in the Google Cloud VPC firewall rules.
-3.  A domain name pointing to your VPS IP address (optional but recommended).
-
-## Step 1: Install Docker & Docker Compose on VPS
-
-SSH into your Google Cloud VPS and run the following commands to install Docker:
-
+SSH into your fresh Ubuntu VPS and run the official Dokploy installation script:
 ```bash
-# Update package list
-sudo apt-get update
-
-# Install prerequisites
-sudo apt-get install ca-certificates curl gnupg
-
-# Add Docker's official GPG key
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Set up the repository
-echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install Docker Engine and Docker Compose
-sudo apt-get update
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Verify installation
-sudo docker --version
-sudo docker compose version
+curl -sSL https://dokploy.com/install.sh | sh
 ```
+Once installed, navigate to your server's IP address on port `3000` (e.g., `http://YOUR_VPS_IP:3000`) to set up your Dokploy admin account.
 
-## Step 2: Transfer Application Files
+## Step 2: Create a New Application
 
-You will need to transfer your project source code to your VPS. You can do this by using Git, or `scp` / `rsync`.
+1. In the Dokploy Dashboard, go to **Projects** -> **Create Project** (e.g., "QuantAlpha").
+2. Inside the project, click **Create Application**.
+3. Link your GitHub repository.
 
-If using Git:
-```bash
-git clone <your-repository-url>
-cd <your-repository-directory>
+## Step 3: Configure the Build
+
+1. **Source Code**: Select the repository and the branch (e.g., `main`).
+2. **Build Type**: Choose **Dockerfile**.
+3. **Internal Port**: Set this to `3000`. This is the port the Express/Vite server runs on inside the container.
+
+## Step 4: Environment Variables
+
+If you have external API keys in your `.env.example`, navigate to the **Environment** tab in Dokploy and paste your real values.
+
+```env
+PORT=3000
 ```
+*Note: Our `server.ts` automatically binds to `0.0.0.0` and listens to `process.env.PORT || 3000`, making it perfect for Dokploy.*
 
-## Step 3: Configure Environment Variables
+## Step 5: Domains and SSL
 
-The application requires an environment variable file (`.env`). Copy the example and edit anything if needed.
+1. Point your domain (e.g., `alpha.yourdomain.com`) to your VPS IP address in your DNS settings (A Record).
+2. In Dokploy, go to the **Domains** tab for your app.
+3. Add `alpha.yourdomain.com` and click **Generate Let's Encrypt Certificate**. Dokploy handles the Nginx proxying gracefully.
 
-```bash
-cp .env.example .env
-```
-*(Currently none are strictly required as we pull public data, but keep it available for future API keys.)*
+## Step 6: Deploy
 
-## Step 4: Build and Run with Docker
+Go to the **Deployments** tab and click **Deploy**. Dokploy will pull the code, execute the multi-stage build defined in the `Dockerfile`, install dependencies automatically, and expose it to the web.
 
-This project includes a `Dockerfile` and `docker-compose.yml`. Docker will automatically figure out how to build the React application and Express server.
+You can monitor real-time build logs directly through the Dokploy interface.
 
-Build and start the container in detached mode (`-d`):
-
-```bash
-sudo docker compose up --build -d
-```
-
-Your app will now be running and exposed on port `3000`.
-
-## Step 5: Set up a Reverse Proxy (Nginx)
-
-On a production VPS, you rarely expose port 3000 directly. Instead, you use a reverse proxy like Nginx to securely handle port 80/443 and route traffic internally to port 3000.
-
-1. Install Nginx:
-```bash
-sudo apt install nginx -y
-```
-
-2. Create an Nginx config file:
-```bash
-sudo nano /etc/nginx/sites-available/quantalpha
-```
-
-3. Paste the following configuration (replace `your_domain.com` with your actual domain or IP):
-```nginx
-server {
-    listen 80;
-    server_name your_domain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-4. Enable the configuration and restart Nginx:
-```bash
-sudo ln -s /etc/nginx/sites-available/quantalpha /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-## Step 6: Secure with SSL (Let's Encrypt)
-
-If you mapped a domain to your VPS:
-
-```bash
-sudo apt install certbot python3-certbot-nginx -y
-sudo certbot --nginx -d your_domain.com
-```
-Follow the prompts to enable HTTPS. Your app is now live, secure, and running!
-
-## Maintenance Commands
-
-**View Server Logs:**
-```bash
-sudo docker compose logs -f
-```
-
-**Restart the App:**
-```bash
-sudo docker compose restart
-```
-
-**Pull Updates and Rebuild:**
-```bash
-git pull origin main
-sudo docker compose up --build -d
-```
+## Maintenance
+Whenever you push changes to your GitHub branch, Dokploy can be set to auto-deploy the newest version, ensuring zero manual intervention!

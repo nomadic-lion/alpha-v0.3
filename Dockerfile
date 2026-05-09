@@ -5,13 +5,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install ALL dependencies
+RUN npm install
 
 # Copy full application
 COPY . .
 
-# Build the application
+# Build the application (client)
 RUN npm run build
 
 # Expose the correct port

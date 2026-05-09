@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // API Route to get real FX data
   app.get("/api/forex", async (req, res) => {
