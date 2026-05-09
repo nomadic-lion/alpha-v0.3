@@ -24,7 +24,7 @@ export const Sparkline: React.FC<SparklineProps> = ({
   const usableHeight = height - padding * 2;
 
   const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * width;
+    const x = (i / Math.max(1, data.length - 1)) * width;
     const y = height - padding - ((val - min) / range) * usableHeight;
     return `${x},${y}`;
   }).join(' ');

@@ -33,7 +33,7 @@ async function startServer() {
       // With these 7 pairs, we can derive all 28 crosses and their relative strength.
       
       // Map interval for yahoo-finance
-      let interval: "1m" | "2m" | "15m" | "1h" = "1d" as any;
+      let interval: "1m" | "2m" | "5m" | "15m" | "30m" | "1h" | "1d" | "1wk" = "1d" as any;
       let range = "1mo";
       let timeWindowMs = 0;
 
@@ -43,24 +43,20 @@ async function startServer() {
 
       switch (timeframe) {
         case "15M": 
-          interval = "1m"; 
-          range = "1d"; 
-          timeWindowMs = 15 * ONE_MINUTE;
+          interval = "15m"; 
+          timeWindowMs = 24 * ONE_HOUR; // ~96 candles
           break;
         case "1H": 
-          interval = "2m"; 
-          range = "1d"; 
-          timeWindowMs = ONE_HOUR;
+          interval = "1h"; 
+          timeWindowMs = 5 * ONE_DAY; // ~120 candles
           break;
         case "1D": 
-          interval = "15m"; 
-          range = "5d"; // Need enough data incase of weekend
-          timeWindowMs = ONE_DAY;
+          interval = "1d"; 
+          timeWindowMs = 30 * ONE_DAY; // ~30 candles
           break;
         case "1W": 
-          interval = "1h"; 
-          range = "1mo"; 
-          timeWindowMs = 7 * ONE_DAY;
+          interval = "1wk";
+          timeWindowMs = 180 * ONE_DAY; // ~26 candles
           break;
       }
 
@@ -120,8 +116,14 @@ async function startServer() {
           quotes.forEach((q: any) => {
              if (q.close !== null && (q.date || q.timestamp)) {
                 const d = q.date ? new Date(q.date) : new Date(q.timestamp);
-                if (d.getTime() >= cutoffTime) { // Filter relative to market time
-                  const timeStr = d.toISOString();
+                let bucketMs = d.getTime();
+                if (interval === "1m") bucketMs = bucketMs - (bucketMs % ONE_MINUTE);
+                if (interval === "15m") bucketMs = bucketMs - (bucketMs % (15 * ONE_MINUTE));
+                if (interval === "1h") bucketMs = bucketMs - (bucketMs % ONE_HOUR);
+                if (interval === "1d") bucketMs = bucketMs - (bucketMs % ONE_DAY);
+                if (interval === "1wk") bucketMs = bucketMs - (bucketMs % (7 * ONE_DAY));
+                if (bucketMs >= cutoffTime) { // Filter relative to market time
+                  const timeStr = new Date(bucketMs).toISOString();
                   allTimestamps.add(timeStr);
                   rawData[baseSymbol][timeStr] = q.close;
                 }
