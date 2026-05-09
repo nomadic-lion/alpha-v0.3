@@ -146,20 +146,21 @@ export default function StrengthOverviewChart({ data, timeframe }: Props) {
           
           const isFaded = hoveredCurrency && hoveredCurrency !== currency;
           const isHighlighted = hoveredCurrency === currency;
+          const showDefault = !hoveredCurrency;
           
           return (
-            <Line
+             <Line
               key={currency}
-              type="monotone"
+              type="basis" // Ultra-smooth curves
               dataKey={currency}
               stroke={COLORS[currency]}
-              strokeWidth={isHighlighted ? 3 : (isFaded ? 0.5 : 1.5)}
-              strokeOpacity={isFaded ? 0.1 : (isHighlighted ? 1 : 0.8)}
+              strokeWidth={isHighlighted ? 4 : (isFaded ? 0.75 : 1.5)}
+              strokeOpacity={isHighlighted ? 1 : (showDefault ? 0.4 : 0.1)}
               dot={false}
-              activeDot={{ r: isHighlighted ? 5 : 3, strokeWidth: 0, fill: COLORS[currency], style: { filter: 'url(#glow)' } }}
+              activeDot={{ r: isHighlighted ? 6 : 0, strokeWidth: 0, fill: COLORS[currency], style: { filter: 'url(#glow)' } }}
               isAnimationActive={true}
               animationDuration={500}
-              style={{ zIndex: isHighlighted ? 10 : 1 }}
+              style={{ zIndex: isHighlighted ? 10 : 1, filter: isHighlighted ? 'url(#glow)' : 'none' }}
             />
           );
         })}
