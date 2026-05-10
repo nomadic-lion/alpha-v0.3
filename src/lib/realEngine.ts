@@ -16,18 +16,36 @@ export function useRealCurrencyData(timeframe: Timeframe) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<any[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refresh = () => setRefreshKey(prev => prev + 1);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
+    let intervalId: ReturnType<typeof setInterval>;
     setLoading(true);
     setError(null);
 
     const fetchData = async () => {
       try {
-        const res = await fetch(`/api/forex?timeframe=${timeframe}`);
+        const res = await fetch(`/api/forex?timeframe=${timeframe}&t=${Date.now()}`);
+        const contentType = res.headers.get("content-type");
+        
         if (!res.ok) {
-          throw new Error(`Server responded with status ${res.status}`);
+          const text = await res.text();
+          let msg = `Server Error (${res.status})`;
+          try {
+            const json = JSON.parse(text);
+            msg = json.message || json.error || msg;
+          } catch (e) {
+            // Not JSON
+          }
+          throw new Error(msg);
         }
+
+        if (!contentType || !contentType.includes("application/json")) {
+           throw new Error("Server returned non-JSON response. This might be a temporary connection issue.");
+        }
+
         const data = await res.json();
         
         if (data.success && data.pairsData) {
@@ -106,13 +124,13 @@ export function useRealCurrencyData(timeframe: Timeframe) {
 
     fetchData();
 
-    // Auto-refresh every 10 seconds for real data (less aggressive to respect proxy)
-    interval = setInterval(fetchData, 10000);
+    // Auto-refresh every 30 seconds for real data (less aggressive to respect proxy)
+    intervalId = setInterval(fetchData, 30000);
 
-    return () => clearInterval(interval);
-  }, [timeframe]);
+    return () => clearInterval(intervalId);
+  }, [timeframe, refreshKey]);
 
-  return { strengths, loading, error, chartData };
+  return { strengths, loading, error, chartData, refresh };
 }
 
 function calculateStrengthsAt(getV: Function, pd: any, index?: number): CurrencyStrength[] {

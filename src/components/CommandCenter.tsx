@@ -23,8 +23,13 @@ const PAIR_MAP: Record<Currency, string> = {
 export default function CommandCenter() {
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('USD');
-  const { strengths, loading, error, chartData } = useRealCurrencyData(timeframe);
+  const { strengths, loading, error, chartData, refresh } = useRealCurrencyData(timeframe);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  const isWeekend = currentTime.getUTCDay() === 0 || currentTime.getUTCDay() === 6;
+  const isAfterMarketClose = (currentTime.getUTCDay() === 5 && currentTime.getUTCHours() >= 21) || // Friday after 9PM UTC
+                             (currentTime.getUTCDay() === 0 && currentTime.getUTCHours() < 21);  // Sunday before 9PM UTC
+  const marketsClosed = isWeekend || isAfterMarketClose;
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -60,9 +65,24 @@ export default function CommandCenter() {
             <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-neon-amber/80 shadow-[0_0_8px_rgba(255,171,0,0.8)]"></span> NYC <span className="text-gray-300 ml-1">{nyTime}</span></div>
           </div>
           <div className="hidden lg:flex gap-6 shrink-0">
-            <span>DATA FEED: <span className="text-neon-cyan ml-1">YAHOO FINANCE VIA REST</span></span>
-            <span>SYSTEM: <span className="text-neon-cyan ml-1">ONLINE</span></span>
-            <span className="flex items-center gap-1">LATENCY: <span className="text-neon-cyan ml-1 flex items-center gap-1">12ms <Activity size={10} className="animate-pulse" /></span></span>
+            <span className="flex items-center gap-2">
+              MARKETS: 
+              <span className={cn("flex items-center gap-1", marketsClosed ? "text-neon-amber" : "text-neon-green")}>
+                {marketsClosed ? "CLOSED" : "OPEN"} 
+                <span className={cn("w-1 h-1 rounded-full", marketsClosed ? "bg-neon-amber" : "bg-neon-green animate-pulse")} />
+              </span>
+            </span>
+            <span>DATA FEED: <span className="text-neon-cyan ml-1">YAHOO FINANCE</span></span>
+            <span className="flex items-center gap-1">
+              REFRESH: 
+              <button 
+                onClick={() => refresh()} 
+                disabled={loading}
+                className="text-neon-cyan hover:text-white transition-colors disabled:opacity-50"
+              >
+                <Activity size={10} className={cn(loading && "animate-spin")} />
+              </button>
+            </span>
           </div>
         </div>
 
@@ -97,39 +117,51 @@ export default function CommandCenter() {
       <main className="flex-1 flex flex-col gap-6">
         
         {/* MATRIX OVERVIEW SECTION (FULL WIDTH) */}
-        <div className="glass-panel rounded-xl overflow-hidden flex flex-col border border-white/5 relative h-[400px] sm:h-[500px] lg:h-[550px]">
+        <div className="glass-panel rounded-xl overflow-hidden flex flex-col border border-white/5 relative min-h-[400px] sm:min-h-[500px] md:h-[500px] lg:h-[550px]">
           <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-30" />
           <div className="p-4 border-b border-white/5 bg-black/40 flex flex-col sm:flex-row items-center justify-between gap-4">
             <h2 className="text-sm font-mono text-neon-cyan uppercase tracking-widest flex items-center gap-2">
               <LineChart size={16} className="opacity-70" /> Relative Strength Matrix
+              {loading && <Loader2 size={14} className="text-neon-cyan animate-spin ml-2" />}
             </h2>
-            {/* Timeframe Tabs */}
-            <div className="flex items-center bg-[#050507] p-1 rounded-lg border border-white/5 shadow-inner w-full sm:w-auto justify-between">
-              {TIMEFRAMES.map((tf) => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={cn(
-                    "px-4 py-1.5 sm:px-5 sm:py-1 rounded-md text-[11px] font-mono font-medium transition-all duration-300 relative flex-1 sm:flex-none text-center",
-                    timeframe === tf 
-                      ? "text-white shadow-lg" 
-                      : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
-                  )}
-                >
-                  {timeframe === tf && (
-                    <motion.div 
-                      layoutId="active-tf-chart-pill"
-                      className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900 border border-t-white/10 border-b-black border-x-black rounded-md -z-10"
-                      initial={false}
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  {timeframe === tf && (
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-[2px] bg-neon-cyan rounded-t-full shadow-[0_0_8px_rgba(0,243,255,0.8)]" />
-                  )}
-                  {tf}
-                </button>
-              ))}
+            <div className="flex items-center gap-4 w-full sm:w-auto">
+              {/* Refresh button for mobile/easy access */}
+              <button 
+                onClick={() => refresh()}
+                disabled={loading}
+                className="p-1 px-3 rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 transition-all flex items-center gap-2 font-mono text-[10px]"
+              >
+                <Activity size={12} className={cn(loading && "animate-spin text-neon-cyan")} />
+                REFRESH
+              </button>
+              {/* Timeframe Tabs */}
+              <div className="flex items-center bg-[#050507] p-1 rounded-lg border border-white/5 shadow-inner w-full sm:w-auto justify-between">
+                {TIMEFRAMES.map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeframe(tf)}
+                    className={cn(
+                      "px-4 py-1.5 sm:px-5 sm:py-1 rounded-md text-[11px] font-mono font-medium transition-all duration-300 relative flex-1 sm:flex-none text-center",
+                      timeframe === tf 
+                        ? "text-white shadow-lg" 
+                        : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                    )}
+                  >
+                    {timeframe === tf && (
+                      <motion.div 
+                        layoutId="active-tf-chart-pill"
+                        className="absolute inset-0 bg-gradient-to-b from-gray-800 to-gray-900 border border-t-white/10 border-b-black border-x-black rounded-md -z-10"
+                        initial={false}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
+                    {timeframe === tf && (
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-[2px] bg-neon-cyan rounded-t-full shadow-[0_0_8px_rgba(0,243,255,0.8)]" />
+                    )}
+                    {tf}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex-1 bg-black/50 w-full h-full p-2 relative">
@@ -139,8 +171,14 @@ export default function CommandCenter() {
                   <Activity size={32} className="text-red-500" />
                 </div>
                 <h3 className="text-red-400 font-mono text-lg mb-2 tracking-widest uppercase">Data Interruption</h3>
-                <p className="text-gray-400 max-w-md text-sm">{error}</p>
-                <div className="mt-4 flex gap-2 items-center text-xs text-gray-500 font-mono">
+                <p className="text-gray-400 max-w-md text-sm mb-6">{error}</p>
+                <button 
+                  onClick={() => refresh()}
+                  className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-100 font-mono text-xs tracking-widest transition-all mb-4"
+                >
+                  RETRY CONNECTION
+                </button>
+                <div className="flex gap-2 items-center text-xs text-gray-500 font-mono">
                   <span className="w-2 h-2 rounded-full animate-pulse bg-red-500"></span> Disconnected from Data Feed
                 </div>
               </div>

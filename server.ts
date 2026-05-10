@@ -84,13 +84,15 @@ async function startServer() {
 
       const chartsData = await Promise.all(promises);
       
-      const allFailed = chartsData.every(r => !r || r.error);
-      if (allFailed) {
-          console.error("Yahoo Finance API failed or blocked. Cannot fetch market data.");
+      const successfulCharts = chartsData.filter(r => r && !r.error);
+      console.log(`Fetched ${successfulCharts.length} out of ${symbols.length} symbols successfully.`);
+
+      if (successfulCharts.length === 0) {
+          console.error("All Yahoo Finance requests failed.");
           return res.status(502).json({ 
             success: false, 
             error: "Market Data Unreachable", 
-            message: "Failed to fetch historical quotes from Yahoo Finance. This may be due to rate limiting or connection drops." 
+            message: "Failed to fetch any market data from Yahoo Finance. This often happens if the service is restricted or symbols are invalid." 
           });
       }
 
@@ -137,9 +139,10 @@ async function startServer() {
                 if (interval === "1h") bucketMs = bucketMs - (bucketMs % ONE_HOUR);
                 if (interval === "1d") bucketMs = bucketMs - (bucketMs % ONE_DAY);
                 if (interval === "1wk") bucketMs = bucketMs - (bucketMs % (7 * ONE_DAY));
-                if (bucketMs >= cutoffTime) { // Filter relative to market time
+                if (bucketMs >= cutoffTime) {
                   const timeStr = new Date(bucketMs).toISOString();
                   allTimestamps.add(timeStr);
+                  // ONLY send the number, not the whole quote object
                   rawData[baseSymbol][timeStr] = q.close;
                 }
              }
