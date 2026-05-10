@@ -14,6 +14,7 @@ async function startServer() {
 
   // API Route to get real FX data
   app.get("/api/forex", async (req, res) => {
+    console.log("Fetching forex data for timeframe:", req.query.timeframe);
     try {
       const { timeframe = "1D" } = req.query;
       
@@ -28,6 +29,8 @@ async function startServer() {
         "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "NZDUSD=X",
         "JPY=X", "CAD=X", "CHF=X"
       ];
+      
+      console.log("Symbols to fetch:", symbols);
 
       // To simplify, we just need current price and historical data for sparkline for the 7 major USD pairs.
       // With these 7 pairs, we can derive all 28 crosses and their relative strength.
@@ -66,10 +69,12 @@ async function startServer() {
         try {
           // Always fetch past 5 days buffer to survive weekends
           const maxBufferMs = Math.max(timeWindowMs * 1.5, 5 * ONE_DAY);
+          console.log(`Fetching ${symbol}...`);
           const chart = await yahooFinance.chart(symbol, {
             period1: new Date(Date.now() - maxBufferMs), 
             interval: interval
           });
+          console.log(`Successfully fetched ${symbol}`);
           return { symbol, chart };
         } catch (e) {
           console.error(`Error fetching ${symbol}:`, e);

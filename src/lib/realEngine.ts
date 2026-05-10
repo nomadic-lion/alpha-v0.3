@@ -25,6 +25,9 @@ export function useRealCurrencyData(timeframe: Timeframe) {
     const fetchData = async () => {
       try {
         const res = await fetch(`/api/forex?timeframe=${timeframe}`);
+        if (!res.ok) {
+          throw new Error(`Server responded with status ${res.status}`);
+        }
         const data = await res.json();
         
         if (data.success && data.pairsData) {
@@ -95,7 +98,8 @@ export function useRealCurrencyData(timeframe: Timeframe) {
         }
       } catch (err: any) {
         console.error("Failed to fetch real forex data:", err);
-        setError("Market Data Unreachable. Awaiting new connection...");
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setError(`Market Data Unreachable: ${errorMessage}`);
         setLoading(false);
       }
     };
