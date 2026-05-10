@@ -1,68 +1,36 @@
-# Currency Strength Calculations
+# Currency Strength Calculations: The Relational Algorithm
 
-This document explains the mathematical model and data pipeline used in Quant Alpha to calculate real-time relative currency strengths.
+To determine the true, underlying momentum of any currency, we cannot simply rely on a dollar-pegged index (like DXY). Instead, we must algorithmically pit every currency against **every other currency** in the matrix (Total 28 unique combinations) to filter out base noise. This mathematical framework guarantees high-fidelity, high-level reasoning.
 
-## Overview
+## 1. Base Normalization vector $V$
+The API supplies tick data for major dollar cross-pairs (`EURUSD`, `USDJPY`, `GBPUSD`, `AUDUSD`, `NZDUSD`, `USDCAD`, `USDCHF`). We first normalize these to find the Base Normalization vector $V(c)$ where $c$ is the isolated currency relative to a $1.00$ USD baseline.
 
-Traditional currency pairs only tell you the relative value of two currencies (e.g., EUR vs. USD). If EUR/USD goes up, you don't instantly know if the Euro got stronger or the US Dollar got weaker.
+$V(\text{EUR}) = \text{EURUSD}$
+$V(\text{JPY}) = 1 / \text{USDJPY}$
 
-**Relative Currency Strength** solves this by decomposing pair prices into individual, isolated currency strengths. We analyze 8 primary currencies: `USD`, `EUR`, `GBP`, `JPY`, `AUD`, `NZD`, `CAD`, and `CHF`.
+## 2. The Complete Relational Matrix Calculation
+For any two currencies $x$ and $y$, the synthetic exchange rate $E_{x/y}$ is defined as:
+$$E_{x/y} = \frac{V(x)}{V(y)}$$
 
-## 1. The Reference Currency (USD)
+Let $O_{x/y}$ be the opening exchange rate at the start of the timeframe (e.g., 24 hours ago), and $C_{x/y}$ be the current exchange rate.
+The fractional delta ($\Delta_{x/y}$) is the true percentage return of currency $x$ denominated in currency $y$:
 
-We simplify the matrix by anchoring all calculations to the US Dollar (USD), making it the base for value reference.
-- $V_{USD} = 1.0$ (The baseline)
-- The value of any other currency $c$ is simply its price in USD: $V_c = Price(c/USD)$
+$$\Delta_{x/y} = \left( \frac{C_{x/y} - O_{x/y}}{O_{x/y}} \right) \times 100$$
 
-### Deriving Values from Majors
-We fetch real-time and historical price data for 7 major pairs from Yahoo Finance API:
-- **EUR/USD**, **GBP/USD**, **AUD/USD**, **NZD/USD** (Quote is USD, so $V_c = currentPrice$)
-- **USD/JPY**, **USD/CHF**, **USD/CAD** (Base is USD, so $V_c = 1 / currentPrice$)
+## 3. The Absolute Strength Index (ASI)
+To evaluate the true market supremacy of currency $x$ (e.g., `EUR`), we do not simply look at `EURUSD`. Instead, we aggregate its performance against all other 7 global currencies, finding its mean net strength:
 
-## 2. Deriving the Full Matrix (28 Pairs)
+$$ ASI_x = \frac{1}{7} \sum_{y \neq x} \Delta_{x/y} $$
 
-With the USD value of all 8 primary currencies known, we can synthetically construct the price of any cross-pair without needing to query it directly from the data feed, reducing latency and API usage.
+This is exactly what the `calculateStrengthsAt` function executes iteratively. If $ASI_{\text{EUR}} > +0.5\%$, it implies the Euro is broadly acting as an aggressive market leader, absorbing liquidity from nearly all counterparty nations, not just America. This approach ensures we judge a currency holistically across the entire macroeconomic landscape.
 
-For any pair Base/Quote (e.g., EUR/GBP):
-$$Price(Base/Quote) = \frac{V_{Base}}{V_{Quote}}$$
-
-*Example:* If EUR/USD is 1.10 ($V_{EUR} = 1.10$) and GBP/USD is 1.25 ($V_{GBP} = 1.25$), then EUR/GBP = $1.10 / 1.25 = 0.8800$.
-
-## 3. Strength Calculation (% Change)
-
-Strength is measured as the percentage change in a currency's value over a selected timeframe (e.g., 15M, 1H, 1D, 1W).
-
-### Step A: Opening Values
-We query the historical data to find the exact opening price of the 7 major pairs at the start of the timeframe window. We then derive the opening USD values for all 8 currencies, denoted as $V_{c, open}$.
-
-### Step B: Current Values
-We use the latest available tick to determine the current USD values for all 8 currencies, denoted as $V_{c, current}$.
-
-### Step C: Relative Change
-For each pair of currencies $(c_i, c_j)$:
-The percentage change of the pair $c_i/c_j$ over the timeframe is:
-$$\Delta(c_i, c_j) = \frac{(V_{c_i, current} / V_{c_j, current}) - (V_{c_i, open} / V_{c_j, open})}{V_{c_i, open} / V_{c_j, open}} \times 100$$
-
-### Step D: Aggregating Overall Strength
-A currency's overall strength is the arithmetic mean of its percentage changes against **all other 7 currencies**.
-
-$$Strength(c) = \frac{1}{7} \sum_{j \neq c} \Delta(c, c_j)$$
-
-**Why this works:**
-If the EUR has a strength of `+0.5%`, it means the Euro has, on average, appreciated by 0.5% against the basket of the other 7 major currencies over the specified timeframe.
-
-## 4. Timeframe Windows and Filtering
-
-Financial markets have weekends and holidays where trading stops. A generic "minus 24 hours" timestamp might land in the middle of a weekend, yielding zero ticks.
+## 4. Timeframe Windows and Interpolation
+Financial markets have weekends and holidays where trading halts. A generic "minus 24 hours" timestamp might land in the middle of a weekend, yielding zero ticks.
 
 To handle this, our backend data pipeline:
-1. Determines the required `timeWindowMs` (e.g., 1 hour = 3,600,000 ms).
-2. Fetches a buffer of historical data (e.g., past 5 days).
-3. Defines the `latestTimestampMs` based on the *actual* most recent tick received (handling market closure gracefully).
-4. Calculates the precise `cutoffTime` relative to the latest tick: `cutoffTime = latestTimestampMs - timeWindowMs`.
-5. Filters all data points strictly within this active market window to build accurate history timelines and accurate opening prices.
+1. Determines the `timeWindowMs` (e.g., 1 hour = 3,600,000 ms).
+2. Sets `latestTimestampMs` based on the actual most recent tick received (handling market closure gracefully).
+3. Defines `cutoffTime` relative to the latest tick.
 
-## 5. Sparkline & Matrix Timelines
-
-For visual matrix charts, the engine doesn't just calculate strength for the *current* moment. It loops through the entire array of synchronized historical ticks within the time window.
-For every timestamp $t$, it calculates the relative strength of all currencies from $t_{open}$ to $t$, generating the data structures required for Recharts and SVG sparklines.
+## 5. Network Contingencies
+When deployed to a cloud VPS via environments like Docker/Dokploy, institutional trading rate limits (such as IP blocks by data providers like Yahoo Finance) can sometimes disrupt the influx of live vector data. The server is engineered to detect network anomalies and instantly pipe the HTTP 502 data loss exceptions via WebSocket/REST, shifting the dashboard into a professional standby failure state, awaiting reconnection.

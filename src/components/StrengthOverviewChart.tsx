@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Legend, CartesianGrid } from 'recharts';
+import { useMediaQuery } from 'usehooks-ts';
 import { Currency } from '../lib/realEngine';
 import { cn } from '../lib/utils';
 
@@ -21,6 +22,7 @@ const COLORS: Record<Currency, string> = {
 
 export default function StrengthOverviewChart({ data, timeframe }: Props) {
   const [hoveredCurrency, setHoveredCurrency] = useState<Currency | null>(null);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   
   // Track disabled currencies (clicked in legend)
   const [disabledCurrencies, setDisabledCurrencies] = useState<Set<Currency>>(new Set());
@@ -50,26 +52,40 @@ export default function StrengthOverviewChart({ data, timeframe }: Props) {
   const renderLegend = (props: any) => {
     const { payload } = props;
     return (
-      <ul className="flex flex-wrap justify-center gap-4 pt-4 px-2">
+      <ul className="flex flex-wrap justify-center gap-2 pt-2 px-2">
         {payload.map((entry: any, index: number) => {
           const isActive = hoveredCurrency === entry.dataKey;
           const isDisabled = disabledCurrencies.has(entry.dataKey as Currency);
           return (
             <li 
               key={`item-${index}`} 
+              tabIndex={0}
+              role="button"
+              aria-label={`Toggle ${entry.value}`}
               className={cn(
-                "flex items-center gap-2 cursor-pointer font-mono text-xs transition-all duration-300",
-                isDisabled ? "opacity-30 grayscale" : (hoveredCurrency && !isActive ? "opacity-50" : "opacity-100 hover:scale-110")
+                "flex items-center gap-1.5 cursor-pointer font-mono text-xs transition-all duration-300 px-2 py-2 rounded-md", // Increased touch targets
+                isDisabled ? "opacity-30 grayscale" : (hoveredCurrency && !isActive ? "opacity-50" : "opacity-100"),
+                "touch-manipulation" // Better touch handling
               )}
-              onMouseEnter={() => setHoveredCurrency(entry.dataKey)}
-              onMouseLeave={() => setHoveredCurrency(null)}
-              onClick={() => handleLegendClick(entry.dataKey)}
+              onMouseEnter={() => !isMobile && setHoveredCurrency(entry.dataKey)}
+              onMouseLeave={() => !isMobile && setHoveredCurrency(null)}
+              onClick={() => {
+                handleLegendClick(entry.dataKey);
+                setHoveredCurrency(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleLegendClick(entry.dataKey);
+                  setHoveredCurrency(null);
+                }
+              }}
             >
               <div 
                 className="w-3 h-3 rounded-full" 
                 style={{ backgroundColor: entry.color, boxShadow: isDisabled ? 'none' : `0 0 8px ${entry.color}80` }}
               />
-              <span style={{ color: isDisabled ? '#666' : '#eee' }}>{entry.value}</span>
+              <span className="text-[10px]" style={{ color: isDisabled ? '#666' : '#eee' }}>{entry.value}</span>
             </li>
           );
         })}
@@ -78,10 +94,10 @@ export default function StrengthOverviewChart({ data, timeframe }: Props) {
   };
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height={isMobile ? 300 : "100%"}>
       <LineChart
         data={data}
-        margin={{ top: 20, right: 30, left: 10, bottom: 20 }}
+        margin={{ top: isMobile ? 10 : 20, right: isMobile ? 10 : 30, left: isMobile ? 0 : 10, bottom: isMobile ? 10 : 20 }}
       >
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -103,40 +119,42 @@ export default function StrengthOverviewChart({ data, timeframe }: Props) {
              return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }}
           stroke="#444" 
-          tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }}
+          tick={{ fill: '#666', fontSize: isMobile ? 8 : 10, fontFamily: 'monospace' }}
           dy={15}
           tickMargin={5}
         />
         
         <YAxis 
           stroke="#444" 
-          tick={{ fill: '#666', fontSize: 10, fontFamily: 'monospace' }}
-          tickFormatter={(val) => `${val > 0 ? '+' : ''}${val.toFixed(2)}%`}
+          tick={{ fill: '#666', fontSize: isMobile ? 8 : 10, fontFamily: 'monospace' }}
+          tickFormatter={(val) => `${val > 0 ? '+' : ''}${val.toFixed(0)}%`}
           orientation="right"
-          dx={15}
+          dx={isMobile ? 5 : 15}
           tickMargin={5}
         />
         
         <Tooltip
+          cursor={!isMobile} // Only show cursor line on desktop
           contentStyle={{ 
-            backgroundColor: 'rgba(5, 5, 7, 0.85)', 
+            backgroundColor: 'rgba(5, 5, 7, 0.95)', 
             backdropFilter: 'blur(12px)', 
             border: '1px solid rgba(255,255,255,0.1)', 
             borderRadius: '8px', 
             fontFamily: 'monospace', 
-            padding: '12px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+            padding: '8px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            fontSize: isMobile ? '11px' : '13px'
           }}
-          itemStyle={{ fontSize: '13px', padding: '4px 0', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
-          labelStyle={{ color: '#888', fontSize: '11px', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}
+          itemStyle={{ padding: '2px 0' }}
+          labelStyle={{ color: '#888', fontSize: '10px', marginBottom: '5px', textTransform: 'uppercase', letterSpacing: '1px' }}
           labelFormatter={(label) => {
              if (!label || String(label).startsWith('Point')) return label;
              return new Date(label).toLocaleString();
           }}
-          formatter={(value: number, name: string) => [`${value > 0 ? '+' : ''}${value.toFixed(3)}%`, name]}
+          formatter={(value: number, name: string) => [`${value > 0 ? '+' : ''}${value.toFixed(2)}%`, name]}
         />
         
-        <Legend content={renderLegend} />
+        <Legend content={renderLegend} wrapperStyle={{ paddingTop: isMobile ? '10px' : '0px' }} />
         
         <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="4 4" />
         
@@ -154,13 +172,18 @@ export default function StrengthOverviewChart({ data, timeframe }: Props) {
               type="basis" // Ultra-smooth curves
               dataKey={currency}
               stroke={COLORS[currency]}
-              strokeWidth={isHighlighted ? 4 : (isFaded ? 0.75 : 1.5)}
-              strokeOpacity={isHighlighted ? 1 : (showDefault ? 0.4 : 0.1)}
+              strokeWidth={isHighlighted ? 3 : (isFaded ? 0.5 : 1.5)}
+              strokeOpacity={isHighlighted ? 1 : (showDefault ? 0.6 : 0.2)} // Adjusted opacities
               dot={false}
-              activeDot={{ r: isHighlighted ? 6 : 0, strokeWidth: 0, fill: COLORS[currency], style: { filter: 'url(#glow)' } }}
-              isAnimationActive={true}
+              activeDot={{ 
+                r: isHighlighted ? 6 : 4, 
+                strokeWidth: 2, 
+                fill: COLORS[currency], 
+                stroke: '#000',
+                style: { filter: 'url(#glow)' } 
+              }}
+              isAnimationActive={!isMobile} // Disable animation on mobile to improve feel
               animationDuration={500}
-              style={{ zIndex: isHighlighted ? 10 : 1, filter: isHighlighted ? 'url(#glow)' : 'none' }}
             />
           );
         })}

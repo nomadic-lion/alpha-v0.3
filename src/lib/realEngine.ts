@@ -14,10 +14,13 @@ export interface CurrencyStrength {
 export function useRealCurrencyData(timeframe: Timeframe) {
   const [strengths, setStrengths] = useState<CurrencyStrength[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [chartData, setChartData] = useState<any[]>([]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
+    setLoading(true);
+    setError(null);
 
     const fetchData = async () => {
       try {
@@ -82,9 +85,17 @@ export function useRealCurrencyData(timeframe: Timeframe) {
           setStrengths(currentS);
           setChartData(newChartData);
           setLoading(false);
+          setError(null);
+        } else if (data.error) {
+          setError(data.message || data.error);
+          setLoading(false);
+        } else {
+          setError("Failed to process market data correctly.");
+          setLoading(false);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch real forex data:", err);
+        setError("Market Data Unreachable. Awaiting new connection...");
         setLoading(false);
       }
     };
@@ -97,7 +108,7 @@ export function useRealCurrencyData(timeframe: Timeframe) {
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  return { strengths, loading, chartData };
+  return { strengths, loading, error, chartData };
 }
 
 function calculateStrengthsAt(getV: Function, pd: any, index?: number): CurrencyStrength[] {

@@ -23,7 +23,7 @@ const PAIR_MAP: Record<Currency, string> = {
 export default function CommandCenter() {
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>('USD');
-  const { strengths, loading, chartData } = useRealCurrencyData(timeframe);
+  const { strengths, loading, error, chartData } = useRealCurrencyData(timeframe);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -133,6 +133,18 @@ export default function CommandCenter() {
             </div>
           </div>
           <div className="flex-1 bg-black/50 w-full h-full p-2 relative">
+            {error ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-20 backdrop-blur-md bg-black/60">
+                <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mb-4 border border-red-500/20">
+                  <Activity size={32} className="text-red-500" />
+                </div>
+                <h3 className="text-red-400 font-mono text-lg mb-2 tracking-widest uppercase">Data Interruption</h3>
+                <p className="text-gray-400 max-w-md text-sm">{error}</p>
+                <div className="mt-4 flex gap-2 items-center text-xs text-gray-500 font-mono">
+                  <span className="w-2 h-2 rounded-full animate-pulse bg-red-500"></span> Disconnected from Data Feed
+                </div>
+              </div>
+            ) : null}
             <StrengthOverviewChart data={chartData} timeframe={timeframe} />
           </div>
         </div>

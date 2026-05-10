@@ -73,12 +73,22 @@ async function startServer() {
           return { symbol, chart };
         } catch (e) {
           console.error(`Error fetching ${symbol}:`, e);
-          return null;
+          return { symbol, error: true };
         }
       });
 
       const chartsData = await Promise.all(promises);
       
+      const allFailed = chartsData.every(r => !r || r.error);
+      if (allFailed) {
+          console.error("Yahoo Finance API failed or blocked. Cannot fetch market data.");
+          return res.status(502).json({ 
+            success: false, 
+            error: "Market Data Unreachable", 
+            message: "Failed to fetch historical quotes from Yahoo Finance. This may be due to rate limiting or connection drops." 
+          });
+      }
+
       const rawData: Record<string, Record<string, number>> = {};
       const allTimestamps = new Set<string>();
       
@@ -86,7 +96,7 @@ async function startServer() {
       // Only consider valid quotes where close !== null
       let latestTimestampMs = 0;
       for (const res of chartsData) {
-        if (!res) continue;
+        if (!res || res.error) continue;
         const chartResult = res.chart as any;
         const quotes = chartResult.quotes;
         if (quotes && quotes.length > 0) {
@@ -106,7 +116,7 @@ async function startServer() {
       const cutoffTime = latestTimestampMs > 0 ? latestTimestampMs - timeWindowMs : Date.now() - timeWindowMs;
 
       for (const res of chartsData) {
-        if (!res) continue;
+        if (!res || res.error) continue;
         const baseSymbol = res.symbol; 
         const chartResult = res.chart as any;
         const quotes = chartResult.quotes;
