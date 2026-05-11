@@ -1,12 +1,43 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import YahooFinance from "yahoo-finance2";
-const yahooFinance = new YahooFinance();
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// In-Memory Cache Engine to protect the Twelve Data 800 credits/day limit
+const cache: Record<string, { data: any, timestamp: number }> = {
+  "15M": { data: null, timestamp: 0 },
+  "1H": { data: null, timestamp: 0 },
+  "1D": { data: null, timestamp: 0 },
+  "1W": { data: null, timestamp: 0 }
+};
+
+// Cache Time-To-Live (TTL)
+const TTL = {
+  "15M": 20 * 60 * 1000, // 20 mins (3 fetches/hr)
+  "1H": 2 * 60 * 60 * 1000, // 2 hours (0.5 fetches/hr)
+  "1D": 8 * 60 * 60 * 1000, // 8 hours (0.125 fetches/hr)
+  "1W": 24 * 60 * 60 * 1000 // 24 hours (0.04 fetches/hr)
+};
+
+// Symbol mapping: Yahoo Finance (frontend expects) -> Twelve Data
+const symbolMap: Record<string, string> = {
+  "EURUSD=X": "EUR/USD",
+  "GBPUSD=X": "GBP/USD",
+  "AUDUSD=X": "AUD/USD",
+  "NZDUSD=X": "NZD/USD",
+  "JPY=X": "USD/JPY",
+  "CAD=X": "USD/CAD",
+  "CHF=X": "USD/CHF"
+};
+
+const reverseMap: Record<string, string> = Object.fromEntries(
+  Object.entries(symbolMap).map(([k, v]) => [v, k])
+);
 
 async function startServer() {
   const app = express();
@@ -14,146 +45,89 @@ async function startServer() {
 
   // API Route to get real FX data
   app.get("/api/forex", async (req, res) => {
-    console.log("Fetching forex data for timeframe:", req.query.timeframe);
     try {
       const { timeframe = "1D" } = req.query;
-      
-      const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'NZD', 'CAD', 'CHF'];
-      
-      // We need prices for these against USD (or cross pairs directly).
-      // Let's get the standard quotes. 
-      // Base: USD
-      // EURUSD=X, GBPUSD=X, AUDUSD=X, NZDUSD=X
-      // USDJPY=X, USDCAD=X, USDCHF=X
-      const symbols = [
-        "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "NZDUSD=X",
-        "JPY=X", "CAD=X", "CHF=X"
-      ];
-      
-      console.log("Symbols to fetch:", symbols);
+      const tf = String(timeframe);
 
-      // To simplify, we just need current price and historical data for sparkline for the 7 major USD pairs.
-      // With these 7 pairs, we can derive all 28 crosses and their relative strength.
+      // 1. Check Cache
+      if (cache[tf] && cache[tf].data && (Date.now() - cache[tf].timestamp < (TTL[tf as keyof typeof TTL] || 0))) {
+        console.log(`[CACHE HIT] Returning cached data for ${tf}`);
+        return res.json(cache[tf].data);
+      }
+
+      console.log(`[CACHE MISS] Fetching fresh forex data for timeframe: ${tf}`);
       
-      // Map interval for yahoo-finance
-      let interval: "1m" | "2m" | "5m" | "15m" | "30m" | "1h" | "1d" | "1wk" = "1d" as any;
-      let range = "1mo";
-      let timeWindowMs = 0;
+      const API_KEY = process.env.TWELVE_DATA_API_KEY;
+      if (!API_KEY) {
+        throw new Error("TWELVE_DATA_API_KEY is missing from environment variables.");
+      }
 
-      const ONE_MINUTE = 60 * 1000;
-      const ONE_HOUR = 60 * ONE_MINUTE;
-      const ONE_DAY = 24 * ONE_HOUR;
+      let interval = "1day";
+      let outputsize = 30;
 
-      switch (timeframe) {
+      switch (tf) {
         case "15M": 
-          interval = "15m"; 
-          timeWindowMs = 24 * ONE_HOUR; // ~96 candles
+          interval = "15min"; 
+          outputsize = 120; // 30 hours
           break;
         case "1H": 
           interval = "1h"; 
-          timeWindowMs = 5 * ONE_DAY; // ~120 candles
+          outputsize = 120; // 5 days
           break;
         case "1D": 
-          interval = "1d"; 
-          timeWindowMs = 30 * ONE_DAY; // ~30 candles
+          interval = "1day"; 
+          outputsize = 30; // 30 days
           break;
         case "1W": 
-          interval = "1wk";
-          timeWindowMs = 180 * ONE_DAY; // ~26 candles
+          interval = "1week";
+          outputsize = 26; // 6 months
           break;
       }
 
-      // Fetch chart data (historical) for sparklines and opening prices
-      const results = {};
-      const promises = symbols.map(async (symbol) => {
-        try {
-          // Always fetch past 5 days buffer to survive weekends
-          const maxBufferMs = Math.max(timeWindowMs * 1.5, 5 * ONE_DAY);
-          console.log(`Fetching ${symbol}...`);
-          const chart = await yahooFinance.chart(symbol, {
-            period1: new Date(Date.now() - maxBufferMs), 
-            interval: interval
-          });
-          console.log(`Successfully fetched ${symbol}`);
-          return { symbol, chart };
-        } catch (e) {
-          console.error(`Error fetching ${symbol}:`, e);
-          return { symbol, error: true };
-        }
-      });
-
-      const chartsData = await Promise.all(promises);
+      const symbolsList = Object.values(symbolMap).join(",");
+      const url = `https://api.twelvedata.com/time_series?symbol=${symbolsList}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${API_KEY}`;
       
-      const successfulCharts = chartsData.filter(r => r && !r.error);
-      console.log(`Fetched ${successfulCharts.length} out of ${symbols.length} symbols successfully.`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Twelve Data API returned ${response.status} ${response.statusText}`);
+      }
 
-      if (successfulCharts.length === 0) {
-          console.error("All Yahoo Finance requests failed.");
-          return res.status(502).json({ 
-            success: false, 
-            error: "Market Data Unreachable", 
-            message: "Failed to fetch any market data from Yahoo Finance. This often happens if the service is restricted or symbols are invalid." 
-          });
+      const json = await response.json();
+      
+      if (json.code && json.status === "error") {
+         throw new Error(`Twelve Data Error: ${json.message}`);
       }
 
       const rawData: Record<string, Record<string, number>> = {};
       const allTimestamps = new Set<string>();
-      
-      // Find the absolute latest timestamp across all data to handle weekends
-      // Only consider valid quotes where close !== null
-      let latestTimestampMs = 0;
-      for (const res of chartsData) {
-        if (!res || res.error) continue;
-        const chartResult = res.chart as any;
-        const quotes = chartResult.quotes;
-        if (quotes && quotes.length > 0) {
-          for (let i = quotes.length - 1; i >= 0; i--) {
-            const q = quotes[i];
-            if (q.close !== null && (q.date || q.timestamp)) {
-              const d = q.date ? new Date(q.date) : new Date(q.timestamp);
-              if (d.getTime() > latestTimestampMs) {
-                latestTimestampMs = d.getTime();
-              }
-              break; // Found the latest valid quote for this symbol
-            }
-          }
+
+      // Twelve Data returns an object with symbols as keys, or single if 1 symbol.
+      // Because we fetch multiple, it returns { "EUR/USD": { meta: {}, values: [] }, ... }
+      for (const tdSymbol in json) {
+        const item = json[tdSymbol];
+        if (!item || !item.values || item.status === "error") {
+          console.warn(`Skipping ${tdSymbol} due to missing data or error.`);
+          continue;
         }
-      }
 
-      const cutoffTime = latestTimestampMs > 0 ? latestTimestampMs - timeWindowMs : Date.now() - timeWindowMs;
+        const baseSymbol = reverseMap[tdSymbol];
+        if (!baseSymbol) continue;
 
-      for (const res of chartsData) {
-        if (!res || res.error) continue;
-        const baseSymbol = res.symbol; 
-        const chartResult = res.chart as any;
-        const quotes = chartResult.quotes;
-        
         rawData[baseSymbol] = {};
-        if (quotes && quotes.length > 0) {
-          quotes.forEach((q: any) => {
-             if (q.close !== null && (q.date || q.timestamp)) {
-                const d = q.date ? new Date(q.date) : new Date(q.timestamp);
-                let bucketMs = d.getTime();
-                if (interval === "1m") bucketMs = bucketMs - (bucketMs % ONE_MINUTE);
-                if (interval === "15m") bucketMs = bucketMs - (bucketMs % (15 * ONE_MINUTE));
-                if (interval === "1h") bucketMs = bucketMs - (bucketMs % ONE_HOUR);
-                if (interval === "1d") bucketMs = bucketMs - (bucketMs % ONE_DAY);
-                if (interval === "1wk") bucketMs = bucketMs - (bucketMs % (7 * ONE_DAY));
-                if (bucketMs >= cutoffTime) {
-                  const timeStr = new Date(bucketMs).toISOString();
-                  allTimestamps.add(timeStr);
-                  // ONLY send the number, not the whole quote object
-                  rawData[baseSymbol][timeStr] = q.close;
-                }
-             }
-          });
-        }
+        
+        // Twelve Data returns newest first, so we process it and store.
+        item.values.forEach((v: any) => {
+          // Parse the datetime string (Twelve Data format: "YYYY-MM-DD HH:MM:SS")
+          const d = new Date(v.datetime.replace(' ', 'T') + "Z"); // Treat as UTC for normalization
+          const timeStr = d.toISOString();
+          allTimestamps.add(timeStr);
+          rawData[baseSymbol][timeStr] = parseFloat(v.close);
+        });
       }
-      
-      const sortedTimestamps = Array.from(allTimestamps).sort();
 
+      const sortedTimestamps = Array.from(allTimestamps).sort();
       const pairsData: Record<string, any> = {};
-      
+
       for (const symbol in rawData) {
          const history: (number | null)[] = [];
          let lastClose: number | null = null;
@@ -165,7 +139,7 @@ async function startServer() {
                lastClose = val;
                if (openPrice === null) openPrice = val;
             }
-            history.push(lastClose); // Forward fill
+            history.push(lastClose); // Forward fill missing data points
          });
 
          if (lastClose !== null) {
@@ -178,10 +152,18 @@ async function startServer() {
          }
       }
 
-      res.json({ success: true, pairsData, timestamps: sortedTimestamps });
+      const responsePayload = { success: true, pairsData, timestamps: sortedTimestamps };
+
+      // Update Cache
+      cache[tf] = {
+        data: responsePayload,
+        timestamp: Date.now()
+      };
+
+      res.json(responsePayload);
     } catch (e) {
       console.error(e);
-      res.status(500).json({ success: false, error: String(e) });
+      res.status(502).json({ success: false, error: "Market Data Unreachable", message: String(e) });
     }
   });
 
@@ -203,17 +185,6 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
-}
-
-function getRangeMs(range: string) {
-  const ONE_DAY = 24 * 60 * 60 * 1000;
-  switch (range) {
-    case "1d": return ONE_DAY;
-    case "5d": return 5 * ONE_DAY;
-    case "1mo": return 30 * ONE_DAY;
-    case "6mo": return 180 * ONE_DAY;
-    default: return 30 * ONE_DAY;
-  }
 }
 
 startServer();
