@@ -85,7 +85,7 @@ export default function Documentation() {
             <div className="bg-black/40 p-5 rounded-xl border border-white/5 flex flex-col gap-2">
               <h3 className="text-white font-medium text-lg">How often does the data update?</h3>
               <p className="text-gray-400 text-sm leading-relaxed">
-                We poll via Yahoo Finance REST API. Ticks are generally refreshed on the chart per every new tick registered by the REST endpoint. 
+                We poll via Twelve Data REST API. Ticks are generally refreshed on the chart per every new tick registered by the REST endpoint. 
               </p>
             </div>
 

@@ -72,7 +72,7 @@ export default function CommandCenter() {
                 <span className={cn("w-1 h-1 rounded-full", marketsClosed ? "bg-neon-amber" : "bg-neon-green animate-pulse")} />
               </span>
             </span>
-            <span>DATA FEED: <span className="text-neon-cyan ml-1">YAHOO FINANCE</span></span>
+            <span>DATA FEED: <span className="text-neon-cyan ml-1">TWELVE DATA</span></span>
             <span className="flex items-center gap-1">
               REFRESH: 
               <button 

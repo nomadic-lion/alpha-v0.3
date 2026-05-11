@@ -2,6 +2,8 @@
 
 Quant Alpha is a professional-grade, full-stack React web application engineered to supply quantitative traders and hedge funds with real-time analytics on major FX pairs. By algorithmically evaluating current market tick data, it calculates the underlying relative strength of fundamental currencies (USD, EUR, GBP, JPY, AUD, CAD, CHF, NZD).
 
+When deployed to a cloud VPS via environments like Docker/Dokploy, institutional trading rate limits (such as IP blocks by data providers like Twelve Data) can sometimes disrupt the influx of live vector data. The server is engineered to detect network anomalies and instantly pipe the HTTP 502 data loss exceptions via REST, shifting the dashboard into a professional standby failure state, awaiting reconnection.
+
 ## Features
 
 - **Real-Time Market Tick Monitoring**: Pulls up-to-date Forex exchange quotes.
@@ -20,8 +22,27 @@ Quant Alpha is a professional-grade, full-stack React web application engineered
 ## Architecture Details
 See `CALCULATIONS.md` for a breakdown of how the mathematical relative strengths are formulated across time increments.
 
-## Quick Start
-```bash
-npm install
-npm run dev
-```
+## Setup
+
+1. **Clone the repository**
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Set up Environment Variables**:
+   Create a `.env` file in the root directory:
+   ```env
+   TWELVE_DATA_API_KEY="your_api_key_here"
+   APP_URL="https://your-domain.com"
+   PORT=3000
+   NODE_ENV=production
+   ```
+4. **Run Development Server**:
+   ```bash
+   npm run dev
+   ```
+5. **Build and Start for Production**:
+   ```bash
+   npm run build
+   npm start
+   ```
